@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Progress Logging</title>
+</head>
+<body>
+    <h1>Progress Logging Test</h1>
+    <button id="testBtn">Test Progress Logging</button>
+    <div id="output"></div>
+
+    <script>
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            const output = document.getElementById('output');
+            output.innerHTML = 'Testing...';
+            
+            try {
+                // First test if API is accessible
+                const apiTest = await fetch('http://localhost:3001/', {
+                    method: 'GET'
+                });
+                
+                console.log('API Test:', await apiTest.text());
+                
+                // Try to access progress endpoint (will fail without auth, but should get 401)
+                const progressTest = await fetch('http://localhost:3001/api/progress/log', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        habitId: 'test',
+                        completed: true
+                    })
+                });
+                
+                const result = await progressTest.text();
+                console.log('Progress test result:', result);
+                
+                output.innerHTML = `
+                    <h3>Results:</h3>
+                    <p>API Status: ${apiTest.status}</p>
+                    <p>Progress Status: ${progressTest.status}</p>
+                    <p>Progress Response: ${result}</p>
+                `;
+                
+            } catch (error) {
+                console.error('Test error:', error);
+                output.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>
