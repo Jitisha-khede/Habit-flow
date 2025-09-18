@@ -62,9 +62,9 @@ const DashboardPage = () => {
   }, [habits, groups]);
 
   // Check if a habit is completed today using local state
-  const isCompletedToday = (habit) => {
-    return habit?.isCompletedToday || completedHabits.has(habit._id);
-  };
+ const isCompletedToday = (habit) => {
+  return habit.completionDates?.includes(getTodayDateString());
+};
 
   const fetchData = async () => {
     try {
@@ -78,9 +78,6 @@ const DashboardPage = () => {
         axios.get(`${apiUrl}/api/habits`),
         axios.get(`${apiUrl}/api/groups`)
       ]);
-
-      console.log('Habits response:', habitsResponse.data);
-      console.log('Groups response:', groupsResponse.data);
 
       const habits = habitsResponse.data.data || [];
       const groups = groupsResponse.data.data || [];
@@ -152,63 +149,101 @@ const DashboardPage = () => {
     }
   };
 
-  const handleCreateHabit = async (e) => {
-    e.preventDefault();
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      const response = await axios.post(`${apiUrl}/api/habits`, newHabit);
-      setHabits([response.data.data, ...habits]);
-      setNewHabit({
-        name: '',
-        description: '',
-        goal: '',
-        frequency: 'daily',
-        duration: 30,
-        category: 'general'
-      });
-      setShowCreateForm(false);
-    } catch (error) {
-      console.error('Failed to create habit:', error);
-      setError('Failed to create habit');
-    }
-  };
+  const handleMarkComplete = async (habitId) => {
+  if (loggingProgress === habitId) return; // prevent double clicks
 
-  const handleMarkComplete = (habitId) => {
-    // Prevent multiple simultaneous requests for the same habit
-    if (loggingProgress === habitId) return;
-    
-    // Find the habit to check if already completed
-    const habit = habits.find(h => h._id === habitId);
-    if (isCompletedToday(habit)) {
-      showNotification({
-        type: 'warning',
-        title: 'Already Completed!',
-        message: 'This habit is already completed for today! 🎉',
-        duration: 4000
-      });
-      return;
-    }
-    
-    // Simulate loading state
-    setLoggingProgress(habitId);
-    
-    // Simulate API delay
-    setTimeout(() => {
-      // Mark habit as completed locally
-      setCompletedHabits(prev => new Set([...prev, habitId]));
-      
-      // Show success message
-      showNotification({
-        type: 'success',
-        title: 'Habit Completed!',
-        message: `🎉 Great job! You've completed "${habit.name}" for today!`,
-        duration: 5000
-      });
-      
-      // Clear loading state
-      setLoggingProgress(null);
-    }, 1000); // 1 second delay to simulate API call
-  };
+  const habit = habits.find(h => h._id === habitId);
+  if (!habit) return;
+
+  if (isCompletedToday(habit)) {
+    showNotification({
+      type: 'warning',
+      title: 'Already Completed!',
+      message: 'This habit is already completed for today! 🎉',
+      duration: 4000
+    });
+    return;
+  }
+
+  setLoggingProgress(habitId);
+
+  try {
+    const API = axios.create({
+      baseURL: 'http://localhost:3001/api',
+      withCredentials: true
+    });
+
+    await API.post('/progress/complete-today', { habitId });
+
+    // Update local state: add today's date to completionDates
+    setHabits(prev =>
+      prev.map(h =>
+        h._id === habitId
+          ? {
+              ...h,
+              completionDates: [...(h.completionDates || []), getTodayDateString()]
+            }
+          : h
+      )
+    );
+
+    showNotification({
+      type: 'success',
+      title: 'Habit Completed!',
+      message: `🎉 Great job! You've completed "${habit.name}" for today!`,
+      duration: 5000
+    });
+  } catch (err) {
+    console.error(err);
+    showNotification({
+      type: 'error',
+      title: 'Error',
+      message: 'Failed to mark habit as complete',
+      duration: 5000
+    });
+  } finally {
+    setLoggingProgress(null);
+  }
+};
+
+const handleCreateHabit = async (e) => {
+  e.preventDefault();
+  try {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    const response = await axios.post(`${apiUrl}/api/habits`, newHabit);
+    setHabits(prev => [response.data.data, ...prev]);
+    setNewHabit({
+      name: '',
+      description: '',
+      goal: '',
+      frequency: 'daily',
+      duration: 30,
+      category: 'general'
+    });
+    setShowCreateForm(false);
+    showNotification({
+      type: 'success',
+      title: 'Habit Created!',
+      message: `Your new habit "${response.data.data.name}" has been created.`,
+      duration: 4000
+    });
+  } catch (error) {
+    showNotification({
+      type: 'error',
+      title: 'Error',
+      message: error.response?.data?.message || 'Failed to create habit.',
+      duration: 4000
+    });
+  }
+};
+
+const getTodayDateString = () => new Date().toISOString().split('T')[0];
+
+const getProgress = (habit) => {
+  if (!habit.completionDates || !habit.duration) return 0;
+  const completedDays = habit.completionDates.length;
+  return Math.round((completedDays / habit.duration) * 100);
+};
 
   const handleSearchGroup = async (e) => {
     e.preventDefault();
@@ -539,12 +574,8 @@ const DashboardPage = () => {
                   ) : (
                     habits.map((habit, index) => {
                       // Use habit data with local completion state
-                      const completedToday = isCompletedToday(habit);
-                      const baseProgress = Math.round(habit.completionRate || 0);
-                      // Add 10% progress boost if completed today (locally)
-                      const progress = completedToday && completedHabits.has(habit._id) 
-                        ? Math.min(baseProgress + 10, 100) 
-                        : baseProgress;
+                      const completedToday = habit.completionDates?.includes(getTodayDateString());
+                      const progress = getProgress(habit);
                       const currentStreak = 0;
                       
                       return (

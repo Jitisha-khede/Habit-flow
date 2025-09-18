@@ -1,26 +1,42 @@
 const Habit = require('../models/Habit');
 const Group = require('../models/Group');
 const User = require('../models/User');
+const Progress = require('../models/Progress'); 
 
-// @desc    Get all habits for authenticated user
-// @route   GET /api/habits
-// @access  Private
 const getHabits = async (req, res) => {
   try {
     const habits = await Habit.find({ 
       creator: req.user.userId,
       isActive: true 
-    })
-    .populate('creator', 'username firstName lastName')
-    .sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 });
+
+    const habitsWithProgress = await Promise.all(habits.map(async (habit) => {
+      const progressDocs = await Progress.find({
+        user: req.user.userId,
+        habit: habit._id,
+        completed: true
+      });
+      const completionDates = progressDocs.map(p => p.date.toISOString().split('T')[0]);
+      const totalCompleted = completionDates.length;
+      const daysSinceCreation = habit.duration; 
+      
+      return {
+        ...habit.toObject(),
+        completionDates,
+        startDate: habit.createdAt,
+        progress: {
+          totalCompleted,
+          daysSinceCreation
+        }
+      };
+    }));
 
     res.status(200).json({
       success: true,
-      count: habits.length,
-      data: habits
+      count: habitsWithProgress.length,
+      data: habitsWithProgress
     });
   } catch (error) {
-    console.error('Get habits error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch habits',

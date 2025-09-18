@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
-import { Notification } from '../components/Notification';
+import  Notification  from '../components/Notification';
 
 const GroupViewPage = () => {
   const { groupId } = useParams();
