@@ -336,7 +336,6 @@ const markCompleteToday = async (req, res) => {
   try {
     const { habitId } = req.body;
 
-    // Validate required fields
     if (!habitId) {
       return res.status(400).json({
         success: false,
@@ -346,7 +345,6 @@ const markCompleteToday = async (req, res) => {
 
     // Check if habit exists and user has access to it
     const habit = await Habit.findById(habitId);
-    
     if (!habit || !habit.isActive) {
       return res.status(404).json({
         success: false,
@@ -357,7 +355,6 @@ const markCompleteToday = async (req, res) => {
     // Check if user is the creator or member of a group that has this habit
     const isCreator = habit.creator.toString() === req.user.userId.toString();
     let isMember = false;
-
     if (!isCreator) {
       const groups = await Group.find({
         habits: habitId,
@@ -366,7 +363,6 @@ const markCompleteToday = async (req, res) => {
       });
       isMember = groups.length > 0;
     }
-
     if (!isCreator && !isMember) {
       return res.status(403).json({
         success: false,
@@ -374,34 +370,39 @@ const markCompleteToday = async (req, res) => {
       });
     }
 
+    // Normalize today's date to start of day
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     // Check if already completed today
-    if (habit.isCompletedToday) {
+    const existing = await Progress.findOne({
+      user: req.user.userId,
+      habit: habitId,
+      date: today,
+      completed: true
+    });
+    if (existing) {
       return res.status(400).json({
         success: false,
         message: 'Habit already completed today'
       });
     }
 
-    // Mark habit as completed for today
-    await habit.markCompleted();
-
-    // Fetch the updated habit with all virtual fields
-    const updatedHabit = await Habit.findById(habitId)
-      .populate('creator', 'username firstName lastName');
+    // Create or update progress entry for today
+    const progress = await Progress.createOrUpdate(
+      req.user.userId,
+      habitId,
+      today,
+      true // completed
+    );
 
     res.status(200).json({
       success: true,
       message: 'Habit marked as complete for today!',
-      data: {
-        habit: updatedHabit,
-        completedToday: true,
-        currentStreak: updatedHabit.currentStreak,
-        totalCompletions: updatedHabit.totalCompletions,
-        completionRate: Math.round(updatedHabit.completionRate)
-      }
+      data: progress
     });
   } catch (error) {
-    console.error('Mark complete today error:', error);
+    console.error('Mark complete error:', err?.response?.data || err);
     res.status(500).json({
       success: false,
       message: 'Failed to mark habit as complete',
